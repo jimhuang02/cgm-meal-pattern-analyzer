@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: cgm-meal-pattern-analyzer
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: cgm-db
+          property: connectionString
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
+databases:
+  - name: cgm-db
+    databaseName: cgm_analyzer
+    user: cgm_user
+    plan: free

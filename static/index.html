@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CGM Meal Pattern Analyzer</title>
+  <link rel="icon" type="image/png" href="/static/favicon.png" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f0f4f8;
+      --surface: #ffffff;
+      --border: #e2e8f0;
+      --text: #1e293b;
+      --muted: #64748b;
+      --blue: #3b82f6;
+      --blue-dark: #1d4ed8;
+      --blue-light: #eff6ff;
+      --green: #22c55e;
+      --green-dark: #15803d;
+      --amber: #f59e0b;
+      --red: #ef4444;
+      --radius: 10px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.10);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+    header .logo { font-size: 20px; color: var(--blue); }
+    header h1 { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+    header p  { font-size: 12px; color: var(--muted); }
+
+    /* ── Main layout ── */
+    .main { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── Controls panel ── */
+    .controls {
+      width: 300px;
+      flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .section-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    select, input[type="text"], input[type="time"] {
+      width: 100%;
+      padding: 7px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--surface);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    select:focus, input:focus { border-color: var(--blue); }
+
+    .profile-desc {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 6px;
+      line-height: 1.4;
+    }
+
+    /* Meal card in controls */
+    .meal-item {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: #fafcff;
+    }
+    .meal-item label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      display: block;
+      margin-bottom: 2px;
+    }
+    .meal-row { display: flex; gap: 8px; }
+    .meal-row > * { flex: 1; }
+
+    .window-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .window-group label { font-size: 10px; color: var(--muted); display: block; margin-bottom: 3px; }
+    .window-group span { font-size: 11px; color: var(--blue); font-weight: 600; }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--blue);
+    }
+
+    .btn-generate {
+      width: 100%;
+      padding: 11px;
+      background: var(--blue);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn-generate:hover { background: var(--blue-dark); }
+    .btn-generate:disabled { background: #93c5fd; cursor: not-allowed; }
+
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.4);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Results panel ── */
+    .results {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* Placeholder */
+    .placeholder {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: var(--muted);
+      text-align: center;
+    }
+    .placeholder svg { opacity: 0.3; }
+    .placeholder h2 { font-size: 17px; color: var(--text); }
+    .placeholder p  { font-size: 13px; max-width: 340px; line-height: 1.6; }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 2px;
+      background: var(--border);
+      border-radius: 8px;
+      padding: 3px;
+      width: fit-content;
+    }
+    .tab-btn {
+      padding: 6px 18px;
+      border: none;
+      background: transparent;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .tab-btn.active {
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: var(--shadow);
+    }
+
+    .tab-pane { display: none; }
+    .tab-pane.active { display: flex; flex-direction: column; gap: 20px; }
+
+    /* ── Patient view ── */
+    .meal-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 14px;
+    }
+    .meal-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .card-title { font-size: 14px; font-weight: 700; }
+    .card-time { font-size: 11px; color: var(--muted); }
+
+    .stability-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 20px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .badge-stable          { background: #dcfce7; color: #166534; }
+    .badge-variable        { background: #fef9c3; color: #854d0e; }
+    .badge-highly_variable { background: #fee2e2; color: #991b1b; }
+
+    .card-stat {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .card-stat strong { color: var(--text); }
+
+    .mini-chart-wrap { position: relative; height: 80px; }
+
+    /* Insight panel */
+    .insight-panel {
+      background: var(--blue-light);
+      border: 1px solid #bfdbfe;
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      box-shadow: var(--shadow);
+    }
+    .insight-panel h3 { font-size: 13px; font-weight: 700; color: var(--blue-dark); margin-bottom: 8px; }
+    .insight-panel p  { font-size: 13px; line-height: 1.7; color: #1e3a5f; }
+
+    .insight-spinner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .insight-spinner .spin-blue {
+      width: 16px; height: 16px;
+      border: 2px solid #bfdbfe;
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    /* TIR bar */
+    .tir-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); }
+    .tir-section h3 { font-size: 13px; font-weight: 700; margin-bottom: 10px; }
+    .tir-bar {
+      display: flex;
+      height: 28px;
+      border-radius: 6px;
+      overflow: hidden;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .tir-seg {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      transition: width 0.5s ease;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .tir-seg.in-range { background: var(--green); }
+    .tir-seg.above    { background: var(--amber); }
+    .tir-seg.below    { background: var(--red); }
+    .tir-legend { display: flex; gap: 16px; margin-top: 8px; }
+    .tir-legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+    .tir-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+    /* ── Clinician view ── */
+    .agp-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: var(--shadow);
+    }
+    .agp-card h3 { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+    .agp-card .subtitle { font-size: 11px; color: var(--muted); margin-bottom: 14px; }
+    .agp-legend {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .agp-legend-item { display: flex; align-items: center; gap: 5px; }
+    .agp-legend-swatch { width: 20px; height: 10px; border-radius: 3px; }
+
+    .table-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: var(--shadow);
+      overflow-x: auto;
+    }
+    .table-card h3 { font-size: 14px; font-weight: 700; margin-bottom: 12px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead tr { border-bottom: 2px solid var(--border); }
+    th { text-align: left; padding: 7px 10px; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: #f8fafc; }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 12px;
+    }
+    .stat-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      box-shadow: var(--shadow);
+    }
+    .stat-box .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); font-weight: 600; }
+    .stat-box .value { font-size: 22px; font-weight: 800; color: var(--text); margin-top: 2px; }
+    .stat-box .unit  { font-size: 11px; color: var(--muted); }
+
+    .hypo-empty { font-size: 13px; color: var(--muted); font-style: italic; padding: 8px 0; }
+
+    /* Responsive tweak */
+    @media (max-width: 700px) {
+      .controls { width: 100%; max-height: 320px; }
+      .main { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+      <rect width="28" height="28" rx="7" fill="#3b82f6"/>
+      <path d="M4 14 L8 10 L12 16 L16 8 L20 18 L24 12" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>
+  </div>
+  <div>
+    <h1>CGM Meal Pattern Analyzer</h1>
+    <p>14-day postprandial glucose pattern analysis &amp; AGP</p>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- ── Controls panel ── -->
+  <aside class="controls">
+
+    <div>
+      <div class="section-label">Patient Profile</div>
+      <select id="profile-select" onchange="updateProfileDesc()">
+        <option value="well_controlled">Well Controlled</option>
+        <option value="moderate" selected>Moderate</option>
+        <option value="poorly_controlled">Poorly Controlled</option>
+      </select>
+      <p class="profile-desc" id="profile-desc">Peaks 160–180 mg/dL, slower return, occasional overnight dips.</p>
+    </div>
+
+    <div>
+      <div class="section-label">Meal Configuration</div>
+      <div id="meal-list" style="display:flex;flex-direction:column;gap:10px;"></div>
+    </div>
+
+    <button class="btn-generate" id="gen-btn" onclick="generateAndAnalyze()">
+      <div class="spinner" id="gen-spinner"></div>
+      <span id="gen-label">Generate &amp; Analyze</span>
+    </button>
+
+  </aside>
+
+  <!-- ── Results panel ── -->
+  <main class="results" id="results-panel">
+
+    <!-- Placeholder -->
+    <div class="placeholder" id="placeholder">
+      <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+        <path d="M8 32 L16 20 L24 36 L32 16 L40 40 L48 26 L56 32" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="8" y="44" width="48" height="2" rx="1" fill="#e2e8f0"/>
+      </svg>
+      <h2>No data yet</h2>
+      <p>Configure your patient profile and meal schedule, then click <strong>Generate &amp; Analyze</strong> to simulate 14 days of CGM data.</p>
+    </div>
+
+    <!-- Results (hidden until first run) -->
+    <div id="results-content" style="display:none; flex-direction:column; gap:20px;">
+
+      <!-- Tab bar -->
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('patient', this)">Patient View</button>
+        <button class="tab-btn" onclick="switchTab('clinician', this)">Clinician View</button>
+      </div>
+
+      <!-- ── Patient tab ── -->
+      <div class="tab-pane active" id="tab-patient">
+
+        <div class="meal-cards" id="meal-cards"></div>
+
+        <div class="insight-panel" id="insight-panel">
+          <h3>🩺 AI Pattern Insight</h3>
+          <div class="insight-spinner" id="insight-spinner">
+            <div class="spin-blue"></div>
+            Generating personalized insight…
+          </div>
+          <p id="insight-text" style="display:none;"></p>
+        </div>
+
+        <div class="tir-section">
+          <h3>Time in Range (14-day summary)</h3>
+          <div style="display:flex;align-items:center;gap:28px;flex-wrap:wrap;">
+            <div style="width:170px;height:170px;flex-shrink:0;">
+              <canvas id="tir-chart"></canvas>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;" id="tir-legend"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ── Clinician tab ── -->
+      <div class="tab-pane" id="tab-clinician">
+
+        <div class="agp-card">
+          <h3>Ambulatory Glucose Profile (AGP)</h3>
+          <p class="subtitle">14-day data collapsed to 24-hour view · All times shown in local time</p>
+          <div class="agp-legend">
+            <div class="agp-legend-item"><div class="agp-legend-swatch" style="background:rgba(147,197,253,0.4)"></div>10th–90th percentile</div>
+            <div class="agp-legend-item"><div class="agp-legend-swatch" style="background:rgba(59,130,246,0.45)"></div>25th–75th percentile</div>
+            <div class="agp-legend-item"><div class="agp-legend-swatch" style="background:#1d4ed8; height:3px; border-radius:2px;"></div>Median (P50)</div>
+            <div class="agp-legend-item"><div class="agp-legend-swatch" style="background:rgba(34,197,94,0.15); border:1px solid rgba(34,197,94,0.4)"></div>Target zone (70–180)</div>
+          </div>
+          <canvas id="agp-chart" style="width:100%; max-height:340px;"></canvas>
+        </div>
+
+        <div class="table-card">
+          <h3>Meal Analysis</h3>
+          <table id="meal-table">
+            <thead>
+              <tr>
+                <th>Meal</th>
+                <th>Peak (mg/dL)</th>
+                <th>Time to peak (min)</th>
+                <th>Excursion (mg/dL)</th>
+                <th>CV%</th>
+                <th>Classification</th>
+              </tr>
+            </thead>
+            <tbody id="meal-table-body"></tbody>
+          </table>
+        </div>
+
+        <div>
+          <div class="section-label" style="margin-bottom:10px;">Summary Statistics</div>
+          <div class="stats-grid" id="stats-grid"></div>
+        </div>
+
+        <div class="table-card">
+          <h3>Hypoglycemia Log</h3>
+          <div id="hypo-content"></div>
+        </div>
+
+      </div><!-- /tab-clinician -->
+
+    </div><!-- /results-content -->
+
+  </main>
+</div><!-- /main -->
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────────────────────
+let currentSessionId = null;
+let mealMiniCharts = {};
+let agpChart = null;
+let tirChart = null;
+
+const PROFILE_DESCS = {
+  well_controlled: "Peaks rarely exceed 160 mg/dL with a quick return to baseline.",
+  moderate:        "Peaks 160–180 mg/dL, slower return, occasional overnight dips.",
+  poorly_controlled: "Peaks 180–220 mg/dL, prolonged elevation, high day-to-day variability.",
+};
+
+const DEFAULT_MEALS = [
+  { name: "Breakfast", time: "07:30", before: 30, after: 150 },
+  { name: "Lunch",     time: "12:30", before: 30, after: 150 },
+  { name: "Dinner",    time: "19:00", before: 30, after: 150 },
+  { name: "Snack",     time: "15:00", before: 30, after: 120 },
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Initialisation
+// ─────────────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  buildMealList();
+  updateProfileDesc();
+});
+
+function buildMealList() {
+  const container = document.getElementById('meal-list');
+  container.innerHTML = '';
+  DEFAULT_MEALS.forEach((m, i) => {
+    container.insertAdjacentHTML('beforeend', mealItemHTML(m, i));
+  });
+}
+
+function mealItemHTML(m, i) {
+  return `
+  <div class="meal-item" id="meal-item-${i}">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;font-weight:700;color:var(--text);">
+        <input type="checkbox" id="meal-enabled-${i}" checked onchange="toggleMeal(${i})" />
+        ${m.name}
+      </label>
+    </div>
+    <div id="meal-fields-${i}">
+      <div class="meal-row">
+        <div>
+          <label>Name</label>
+          <input type="text" id="meal-name-${i}" value="${m.name}" />
+        </div>
+        <div>
+          <label>Time (HH:MM)</label>
+          <input type="text" id="meal-time-${i}" value="${m.time}" placeholder="07:30"
+            maxlength="5" style="font-family:monospace;letter-spacing:1px;" />
+        </div>
+      </div>
+      <div class="window-row">
+        <div class="window-group">
+          <label>Before meal <span id="before-lbl-${i}">${m.before} min</span></label>
+          <input type="range" min="0" max="180" step="5" value="${m.before}" id="before-${i}"
+            oninput="document.getElementById('before-lbl-${i}').textContent=this.value+' min'" />
+        </div>
+        <div class="window-group">
+          <label>After meal <span id="after-lbl-${i}">${m.after} min</span></label>
+          <input type="range" min="30" max="360" step="5" value="${m.after}" id="after-${i}"
+            oninput="document.getElementById('after-lbl-${i}').textContent=this.value+' min'" />
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function toggleMeal(i) {
+  const enabled = document.getElementById(`meal-enabled-${i}`).checked;
+  const fields  = document.getElementById(`meal-fields-${i}`);
+  fields.style.opacity = enabled ? '1' : '0.35';
+  fields.style.pointerEvents = enabled ? '' : 'none';
+}
+
+function updateProfileDesc() {
+  const v = document.getElementById('profile-select').value;
+  document.getElementById('profile-desc').textContent = PROFILE_DESCS[v];
+}
+
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(`tab-${name}`).classList.add('active');
+  if (name === 'clinician' && agpChart) agpChart.resize();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Collect form data
+// ─────────────────────────────────────────────────────────────────────────────
+function collectFormData() {
+  const meal_configs = DEFAULT_MEALS
+    .map((_, i) => {
+      const enabled = document.getElementById(`meal-enabled-${i}`).checked;
+      if (!enabled) return null;
+      const time = document.getElementById(`meal-time-${i}`).value.trim();
+      if (!/^\d{2}:\d{2}$/.test(time)) {
+        throw new Error(`Meal ${i+1}: time must be HH:MM (e.g. 07:30)`);
+      }
+      return {
+        name: document.getElementById(`meal-name-${i}`).value.trim() || `Meal ${i+1}`,
+        time,
+        window_before_min: parseInt(document.getElementById(`before-${i}`).value, 10),
+        window_after_min:  parseInt(document.getElementById(`after-${i}`).value, 10),
+      };
+    })
+    .filter(Boolean);
+
+  if (meal_configs.length === 0) throw new Error('Please enable at least one meal.');
+
+  return {
+    patient_profile: document.getElementById('profile-select').value,
+    meal_configs,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Generate & Analyze
+// ─────────────────────────────────────────────────────────────────────────────
+async function generateAndAnalyze() {
+  setLoading(true);
+  document.getElementById('results-content').style.display = 'none';
+  document.getElementById('placeholder').style.display = 'flex';
+
+  try {
+    const body = collectFormData();
+
+    // 1. Simulate
+    const simRes = await fetch('/api/simulate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!simRes.ok) throw new Error(`Simulation failed: ${simRes.status}`);
+    const { session_id } = await simRes.json();
+    currentSessionId = session_id;
+
+    // 2. Analyse
+    const anaRes = await fetch(`/api/analysis/${session_id}`);
+    if (!anaRes.ok) throw new Error(`Analysis failed: ${anaRes.status}`);
+    const analysis = await anaRes.json();
+
+    // 3. Render
+    renderPatientView(analysis);
+    renderClinicianView(analysis);
+
+    document.getElementById('placeholder').style.display = 'none';
+    const rc = document.getElementById('results-content');
+    rc.style.display = 'flex';
+
+    // 4. Async LLM insight
+    fetchInsight(session_id);
+
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    setLoading(false);
+  }
+}
+
+function setLoading(on) {
+  document.getElementById('gen-btn').disabled = on;
+  document.getElementById('gen-spinner').style.display = on ? 'block' : 'none';
+  document.getElementById('gen-label').textContent = on ? 'Simulating…' : 'Generate & Analyze';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fetch LLM insight
+// ─────────────────────────────────────────────────────────────────────────────
+async function fetchInsight(sessionId) {
+  const spinner = document.getElementById('insight-spinner');
+  const textEl  = document.getElementById('insight-text');
+  spinner.style.display = 'flex';
+  textEl.style.display  = 'none';
+
+  try {
+    const res = await fetch(`/api/insight/${sessionId}`, { method: 'POST' });
+    if (!res.ok) throw new Error('Insight unavailable');
+    const { report } = await res.json();
+    textEl.textContent = report;
+    textEl.style.display = 'block';
+  } catch {
+    textEl.textContent = 'Insight generation is currently unavailable.';
+    textEl.style.display = 'block';
+  } finally {
+    spinner.style.display = 'none';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Patient view rendering
+// ─────────────────────────────────────────────────────────────────────────────
+function renderPatientView(analysis) {
+  // Meal cards
+  const container = document.getElementById('meal-cards');
+  container.innerHTML = '';
+
+  // Destroy old mini charts
+  Object.values(mealMiniCharts).forEach(c => c.destroy());
+  mealMiniCharts = {};
+
+  analysis.meal_analyses.forEach((m, i) => {
+    const stClass = `badge-${m.stability}`;
+    const stLabel = m.stability === 'highly_variable' ? 'High Variability'
+                  : m.stability === 'variable'        ? 'Variable'
+                  :                                     'Stable';
+    const timeRange = mealTimeRange(m.meal_time, m.window_before_min, m.window_after_min);
+
+    container.insertAdjacentHTML('beforeend', `
+      <div class="meal-card">
+        <div class="card-header">
+          <span class="card-title">${escHtml(m.meal_name)}</span>
+          <span class="stability-badge ${stClass}">${stLabel}</span>
+        </div>
+        <div class="card-time">${timeRange}</div>
+        <div class="card-stat">
+          <strong>${m.peak_glucose} mg/dL</strong> avg peak ·
+          <strong>${m.time_to_peak_minutes} min</strong> to peak ·
+          <strong>+${m.excursion_mg_dl} mg/dL</strong> excursion
+        </div>
+        <div class="mini-chart-wrap">
+          <canvas id="mini-${i}"></canvas>
+        </div>
+      </div>`);
+
+    requestAnimationFrame(() => renderMiniChart(`mini-${i}`, m.percentiles, i));
+  });
+
+  renderTirChart(analysis.tir_percent, analysis.tar_percent, analysis.tbr_percent);
+}
+
+function renderMiniChart(canvasId, percentiles, idx) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  const labels = percentiles.minutes.map(m => m > 0 ? `+${m}` : `${m}`);
+
+  mealMiniCharts[canvasId] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          data: percentiles.p25,
+          borderColor: 'transparent',
+          backgroundColor: 'transparent',
+          fill: false,
+          pointRadius: 0,
+          tension: 0.4,
+        },
+        {
+          data: percentiles.p75,
+          borderColor: 'transparent',
+          backgroundColor: 'rgba(59,130,246,0.15)',
+          fill: '-1',
+          pointRadius: 0,
+          tension: 0.4,
+        },
+        {
+          label: 'Median',
+          data: percentiles.p50,
+          borderColor: '#3b82f6',
+          borderWidth: 2,
+          backgroundColor: 'transparent',
+          fill: false,
+          pointRadius: 0,
+          tension: 0.4,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: {
+        x: {
+          ticks: { maxTicksLimit: 5, font: { size: 9 }, color: '#94a3b8' },
+          grid: { display: false },
+        },
+        y: {
+          ticks: { maxTicksLimit: 4, font: { size: 9 }, color: '#94a3b8' },
+          grid: { color: '#f1f5f9' },
+        },
+      },
+    },
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Clinician view rendering
+// ─────────────────────────────────────────────────────────────────────────────
+function renderClinicianView(analysis) {
+  renderAgpChart(analysis.agp_24h);
+  renderMealTable(analysis.meal_analyses);
+  renderSummaryStats(analysis);
+  renderHypoLog(analysis.hypo_events);
+}
+
+function renderAgpChart(agp) {
+  if (agpChart) agpChart.destroy();
+
+  const labels = [];
+  for (let i = 0; i < 288; i++) {
+    const h = Math.floor(i * 5 / 60).toString().padStart(2, '0');
+    const m = ((i * 5) % 60).toString().padStart(2, '0');
+    labels.push(`${h}:${m}`);
+  }
+
+  const ctx = document.getElementById('agp-chart').getContext('2d');
+
+  agpChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        // P10 — anchor for outer band fill
+        {
+          label: 'P10',
+          data: agp.p10,
+          borderColor: 'transparent',
+          backgroundColor: 'transparent',
+          fill: false,
+          pointRadius: 0,
+          tension: 0.4,
+        },
+        // P90 — fills down to P10 (outer band)
+        {
+          label: 'P90',
+          data: agp.p90,
+          borderColor: 'transparent',
+          backgroundColor: 'rgba(147,197,253,0.28)',
+          fill: '-1',
+          pointRadius: 0,
+          tension: 0.4,
+        },
+        // P25 — anchor for inner band fill
+        {
+          label: 'P25',
+          data: agp.p25,
+          borderColor: 'transparent',
+          backgroundColor: 'transparent',
+          fill: false,
+          pointRadius: 0,
+          tension: 0.4,
+        },
+        // P75 — fills down to P25 (inner band)
+        {
+          label: 'P75',
+          data: agp.p75,
+          borderColor: 'transparent',
+          backgroundColor: 'rgba(59,130,246,0.38)',
+          fill: '-1',
+          pointRadius: 0,
+          tension: 0.4,
+        },
+        // P50 — median line
+        {
+          label: 'Median (P50)',
+          data: agp.p50,
+          borderColor: 'rgb(29,78,216)',
+          borderWidth: 2,
+          backgroundColor: 'transparent',
+          fill: false,
+          pointRadius: 0,
+          tension: 0.4,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const ds = ['P10','P90','P25','P75','Median'][ctx.datasetIndex];
+              return `${ds}: ${ctx.parsed.y.toFixed(0)} mg/dL`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: {
+            maxTicksLimit: 25,
+            callback: (_, idx) => idx % 12 === 0 ? labels[idx] : null,
+            font: { size: 10 },
+            color: '#94a3b8',
+          },
+          grid: { color: '#f1f5f9' },
+        },
+        y: {
+          min: 50,
+          max: 350,
+          title: { display: true, text: 'Glucose (mg/dL)', font: { size: 11 }, color: '#64748b' },
+          ticks: { font: { size: 10 }, color: '#94a3b8' },
+          grid: { color: '#f1f5f9' },
+        },
+      },
+    },
+    plugins: [{
+      id: 'targetZone',
+      beforeDraw(chart) {
+        const { ctx: c, scales: { x, y } } = chart;
+        const top    = y.getPixelForValue(180);
+        const bottom = y.getPixelForValue(70);
+        c.save();
+        c.fillStyle = 'rgba(34,197,94,0.07)';
+        c.fillRect(x.left, top, x.right - x.left, bottom - top);
+        c.strokeStyle = 'rgba(34,197,94,0.35)';
+        c.lineWidth = 1;
+        c.setLineDash([6, 4]);
+        [top, bottom].forEach(py => {
+          c.beginPath();
+          c.moveTo(x.left, py);
+          c.lineTo(x.right, py);
+          c.stroke();
+        });
+        c.restore();
+      },
+    }],
+  });
+}
+
+function renderMealTable(meals) {
+  const tbody = document.getElementById('meal-table-body');
+  tbody.innerHTML = '';
+  meals.forEach(m => {
+    const stLabel = m.stability === 'highly_variable' ? '🔴 Highly Variable'
+                  : m.stability === 'variable'        ? '🟡 Variable'
+                  :                                     '🟢 Stable';
+    tbody.insertAdjacentHTML('beforeend', `
+      <tr>
+        <td><strong>${escHtml(m.meal_name)}</strong><br/><small style="color:var(--muted)">${m.meal_time}</small></td>
+        <td>${m.peak_glucose}</td>
+        <td>${m.time_to_peak_minutes}</td>
+        <td>+${m.excursion_mg_dl}</td>
+        <td>${m.cv_percent}%</td>
+        <td>${stLabel}</td>
+      </tr>`);
+  });
+}
+
+function renderSummaryStats(analysis) {
+  const grid = document.getElementById('stats-grid');
+  const ea1c = analysis.gmi;
+  const stats = [
+    { label: 'GMI',        value: analysis.gmi.toFixed(1),         unit: '%'      },
+    { label: 'Est. A1c',   value: ea1c.toFixed(1),                  unit: '%'      },
+    { label: 'Mean Glucose', value: analysis.mean_glucose.toFixed(0), unit: 'mg/dL' },
+    { label: 'TIR',        value: analysis.tir_percent.toFixed(1),  unit: '%'      },
+    { label: 'TAR',        value: analysis.tar_percent.toFixed(1),  unit: '%'      },
+    { label: 'TBR',        value: analysis.tbr_percent.toFixed(1),  unit: '%'      },
+    { label: 'Overall CV', value: analysis.cv_percent.toFixed(1),   unit: '%'      },
+    { label: 'Hypo Events', value: analysis.hypo_events.length,     unit: 'episodes' },
+  ];
+  grid.innerHTML = stats.map(s => `
+    <div class="stat-box">
+      <div class="label">${s.label}</div>
+      <div class="value">${s.value}</div>
+      <div class="unit">${s.unit}</div>
+    </div>`).join('');
+}
+
+function renderHypoLog(events) {
+  const container = document.getElementById('hypo-content');
+  if (!events.length) {
+    container.innerHTML = '<p class="hypo-empty">No hypoglycemia episodes (&lt;70 mg/dL for ≥15 min) detected in this 14-day period.</p>';
+    return;
+  }
+  let html = `
+    <table>
+      <thead><tr><th>Start time</th><th>Duration (min)</th><th>Min glucose</th></tr></thead>
+      <tbody>`;
+  events.forEach(e => {
+    const dt = new Date(e.start_time);
+    const display = isNaN(dt) ? e.start_time : dt.toLocaleString();
+    html += `<tr>
+      <td>${display}</td>
+      <td>${e.duration_minutes}</td>
+      <td>${e.min_glucose} mg/dL</td>
+    </tr>`;
+  });
+  html += `</tbody></table>`;
+  container.innerHTML = html;
+}
+
+function renderTirChart(tir, tar, tbr) {
+  if (tirChart) tirChart.destroy();
+  const ctx = document.getElementById('tir-chart').getContext('2d');
+  tirChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['In Range (70–180)', 'Above Range (>180)', 'Below Range (<70)'],
+      datasets: [{
+        data: [tir, tar, tbr],
+        backgroundColor: ['#22c55e', '#f59e0b', '#ef4444'],
+        borderWidth: 3,
+        borderColor: '#ffffff',
+        hoverOffset: 6,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      cutout: '68%',
+      animation: { duration: 600 },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.label}: ${ctx.parsed.toFixed(1)}%`,
+          },
+        },
+      },
+    },
+    plugins: [{
+      id: 'centerText',
+      afterDraw(chart) {
+        const { ctx: c, chartArea: { left, top, right, bottom } } = chart;
+        const cx = (left + right) / 2;
+        const cy = (top + bottom) / 2;
+        c.save();
+        c.font = 'bold 26px -apple-system, sans-serif';
+        c.fillStyle = '#1e293b';
+        c.textAlign = 'center';
+        c.textBaseline = 'middle';
+        c.fillText(tir.toFixed(0) + '%', cx, cy - 9);
+        c.font = '11px -apple-system, sans-serif';
+        c.fillStyle = '#64748b';
+        c.fillText('In Range', cx, cy + 13);
+        c.restore();
+      },
+    }],
+  });
+
+  // Legend
+  const legend = document.getElementById('tir-legend');
+  const items = [
+    { color: '#22c55e', label: 'In Range (70–180)',  val: tir },
+    { color: '#f59e0b', label: 'Above Range (>180)', val: tar },
+    { color: '#ef4444', label: 'Below Range (<70)',  val: tbr },
+  ];
+  legend.innerHTML = items.map(it => `
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div style="width:12px;height:12px;border-radius:3px;background:${it.color};flex-shrink:0;"></div>
+      <span style="font-size:12px;color:var(--muted)">${it.label}</span>
+      <span style="font-size:13px;font-weight:700;color:var(--text);margin-left:auto;padding-left:12px;">${it.val.toFixed(1)}%</span>
+    </div>`).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Utilities
+// ─────────────────────────────────────────────────────────────────────────────
+function mealTimeRange(mealTime, before, after) {
+  const [h, m] = mealTime.split(':').map(Number);
+  const totalMin = h * 60 + m;
+  const fmt = min => {
+    const hh = Math.floor(((min % 1440) + 1440) % 1440 / 60).toString().padStart(2,'0');
+    const mm = (((min % 1440) + 1440) % 1440 % 60).toString().padStart(2,'0');
+    return `${hh}:${mm}`;
+  };
+  return `${fmt(totalMin - before)} – ${fmt(totalMin + after)}`;
+}
+
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
